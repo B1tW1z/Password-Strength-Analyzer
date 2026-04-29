@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import math
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, Response, stream_with_context
 import json
+import uuid
+import threading
+import queue
+import time
 
 from attacks.brute_force import CHARSETS, analyze as brute_force_analyze
 from attacks.dictionary import simulate as dictionary_simulate
@@ -111,6 +116,47 @@ def _build_compare_series(password: str, charset_name: str, compare_passwords: s
     return series
 
 
+def _comparison_meter_items(dictionary_result, brute_force_result) -> list[dict[str, object]]:
+    items: list[dict[str, object]] = []
+
+    def _format_value(label: str, value: float) -> str:
+        if value < 1:
+            return f"{value:.6f}s"
+        return f"{value:.2f}s"
+
+    raw_values: list[tuple[str, float, str]] = [
+        ("Dictionary", float(dictionary_result.elapsed_seconds) if dictionary_result else 0.0, "dict"),
+        ("Brute-force estimate", float(brute_force_result.estimated_seconds) if brute_force_result else 0.0, "estimate"),
+    ]
+    if brute_force_result and brute_force_result.actual_seconds is not None:
+        raw_values.append(("Brute-force actual", float(brute_force_result.actual_seconds), "actual"))
+
+    positive_logs = [math.log10(max(value, 1e-6)) for _, value, _ in raw_values if value > 0]
+    if not positive_logs:
+        positive_logs = [0.0]
+
+    min_log = min(positive_logs)
+    max_log = max(positive_logs)
+
+    for label, value, key in raw_values:
+        log_value = math.log10(max(value, 1e-6)) if value > 0 else min_log
+        if max_log == min_log:
+            width_pct = 100.0
+        else:
+            width_pct = 12.0 + ((log_value - min_log) / (max_log - min_log)) * 88.0
+        items.append(
+            {
+                "label": label,
+                "key": key,
+                "seconds": value,
+                "display": _format_value(label, value),
+                "width_pct": round(width_pct, 2),
+            }
+        )
+
+    return items
+
+
 def _human_readable_number(n: int) -> str:
     # Compact large integers (K, M, B, T)
     try:
@@ -153,6 +199,9 @@ def _render_page(template_name: str, tracker: ResultTracker, **context):
 def create_app() -> Flask:
     app = Flask(__name__)
     tracker = ResultTracker(TRACKER_PATH)
+
+    # In-memory run queues for streaming progress per run id
+    run_queues: dict[str, queue.Queue] = {}
 
     @app.route("/", methods=["GET", "POST"])
     def home():
@@ -214,7 +263,6 @@ def create_app() -> Flask:
             "case_variations": True,
             "dictionary_result": None,
             "brute_force_result": None,
-            "graph_html": None,
             "wordlist_source_label": "Default bundled wordlist",
             "compare_passwords": "",
         }
@@ -222,6 +270,13 @@ def create_app() -> Flask:
         if request.method == "POST":
             password = request.form.get("password", "")
             charset_name = request.form.get("charset_name", "full")
+            # attempts per second selector (used for estimates and streaming simulation)
+            try:
+                attempts_per_second = float(request.form.get("attempts_per_second", "1000000"))
+            except Exception:
+                attempts_per_second = 1_000_000.0
+            animate = request.form.get("animate") == "on"
+            show_raw = request.form.get("show_raw") == "on"
             wordlist_mode = request.form.get("wordlist_mode", DEFAULT_WORDLIST_LABEL)
             compare_passwords = request.form.get("compare_passwords", "")
             case_variations = request.form.get("case_variations") == "on"
@@ -239,7 +294,7 @@ def create_app() -> Flask:
             _store_result(tracker, _build_analysis_record(password, charset_name, aggregated, dictionary_result, brute_force_result))
 
             # Build Chart.js data and inject measured points (dictionary/bruteforce actual times)
-            raw_chart = build_chart_data(_build_compare_series(password, charset_name, compare_passwords))
+            raw_chart = build_chart_data(_build_compare_series(password, charset_name, compare_passwords), attempts_per_second=attempts_per_second)
             try:
                 chart_json = json.loads(raw_chart)
             except Exception:
@@ -252,9 +307,9 @@ def create_app() -> Flask:
             if pw_len >= 1 and pw_len <= len(labels):
                 idx = pw_len - 1
                 # Prefer brute-force actual time if present, otherwise dictionary time
-                if brute_force_result and getattr(brute_force_result, "actual_seconds", None) is not None:
+                if brute_force_result and brute_force_result.actual_seconds is not None:
                     measured[idx] = brute_force_result.actual_seconds
-                elif dictionary_result and getattr(dictionary_result, "elapsed_seconds", None) is not None:
+                elif dictionary_result and dictionary_result.elapsed_seconds is not None:
                     measured[idx] = dictionary_result.elapsed_seconds
 
             if any(v is not None for v in measured):
@@ -274,6 +329,43 @@ def create_app() -> Flask:
             # Human friendly strings for long numbers / times
             combinations_hr = _human_readable_number(brute_force_result.combinations)
             est_time_hr = _human_readable_seconds(brute_force_result.estimated_seconds)
+            avg_time_hr = _human_readable_seconds(brute_force_result.estimated_seconds / 2)
+
+            combinations_display = combinations_hr if not show_raw else str(combinations_raw)
+            est_time_display = est_time_hr if not show_raw else f"{brute_force_result.estimated_seconds}"
+            avg_time_display = avg_time_hr if not show_raw else f"{brute_force_result.estimated_seconds / 2}"
+
+            # Raw values for toggle option
+            combinations_raw = brute_force_result.combinations
+            est_time_raw = brute_force_result.estimated_seconds
+
+            # If animation requested, spawn a background thread to stream progress via SSE
+            run_id = None
+            if animate:
+                run_id = uuid.uuid4().hex
+                q = queue.Queue()
+                run_queues[run_id] = q
+
+                def worker_simulate(run_q: queue.Queue, pwd: str, attempts_per_sec: float):
+                    # Simulate progressive measured times per password length up to the target length.
+                    try:
+                        target_len = max(1, len(pwd))
+                        charset_size = brute_force_result.charset_size
+                        for L in range(1, target_len + 1):
+                            # estimate seconds for length L
+                            combos = pow(charset_size, L)
+                            est_sec = combos / max(1.0, attempts_per_sec)
+                            # push an event with index and value
+                            event = {"type": "progress", "length": L, "estimated_seconds": est_sec}
+                            run_q.put(event)
+                            time.sleep(0.25)
+                        # final event
+                        run_q.put({"type": "done"})
+                    except Exception:
+                        run_q.put({"type": "error", "message": "simulation error"})
+
+                t = threading.Thread(target=worker_simulate, args=(q, password, attempts_per_second), daemon=True)
+                t.start()
 
             context.update(
                 {
@@ -287,6 +379,17 @@ def create_app() -> Flask:
                     "chart_data": chart_data,
                     "combinations_hr": combinations_hr,
                     "est_time_hr": est_time_hr,
+                    "avg_time_hr": avg_time_hr,
+                    "combinations_raw": combinations_raw,
+                    "est_time_raw": est_time_raw,
+                    "attempts_per_second": attempts_per_second,
+                    "animate": animate,
+                    "run_id": run_id,
+                    "show_raw": show_raw,
+                    "combinations_display": combinations_display,
+                    "est_time_display": est_time_display,
+                    "avg_time_display": avg_time_display,
+                    "comparison_meter_items": _comparison_meter_items(dictionary_result, brute_force_result),
                     "wordlist_source_label": wordlist_source_label,
                     "compare_passwords": compare_passwords,
                     "result": aggregated,
@@ -298,6 +401,29 @@ def create_app() -> Flask:
     @app.route("/history")
     def history_page():
         return _render_page("history.html", tracker, page_title="History")
+
+
+    @app.route("/bruteforce/stream/<run_id>")
+    def brute_force_stream(run_id: str):
+        q = run_queues.get(run_id)
+        if q is None:
+            return ("", 404)
+
+        def event_stream():
+            # stream SSE events pulled from the run queue
+            while True:
+                try:
+                    item = q.get(timeout=30)
+                except queue.Empty:
+                    # timeout — end stream
+                    yield "event: done\n"
+                    break
+                data = json.dumps(item)
+                yield f"data: {data}\n\n"
+                if isinstance(item, dict) and item.get("type") in ("done", "error"):
+                    break
+
+        return Response(stream_with_context(event_stream()), mimetype="text/event-stream")
 
     @app.route("/faq")
     def faq_page():
