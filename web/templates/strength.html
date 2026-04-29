@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <section class="grid">
+    <div class="card wide">
+      <h2>Strength analysis</h2>
+      <form method="post" action="{{ url_for('strength_page') }}" class="form-grid">
+        <div class="form-row">
+          <label class="form-label" for="password">Password</label>
+          <input id="password" type="password" name="password" value="{{ password }}" placeholder="Enter a password" required>
+        </div>
+        <div class="button-row">
+          <button class="button" type="submit">Analyze strength</button>
+          <span class="helper">Uses zxcvbn, rule-based scoring, and entropy estimation.</span>
+        </div>
+      </form>
+    </div>
+
+    <aside class="card narrow">
+      <h2>How this page works</h2>
+      <div class="summary-box">
+        <div class="notice">zxcvbn catches common patterns, the rule-based layer checks composition, and entropy estimates the search space.</div>
+        <div class="notice">The final score is a weighted blend, not a replacement for policy or MFA.</div>
+        <a class="tag secondary" href="{{ url_for('faq_page') }}">Read the FAQ</a>
+      </div>
+    </aside>
+  </section>
+
+  {% if result %}
+    <section class="grid" style="margin-top: 22px;">
+      <div class="card full">
+        <h2>Results</h2>
+        <div class="button-row" style="margin-bottom: 14px;">
+          <span class="badge {{ result.rating }}">{{ result.rating }}</span>
+          <span class="tag">Final score {{ result.final_score }} / 100</span>
+        </div>
+        <div class="scorebar"><div style="width: {{ result.final_score }}%;"></div></div>
+      </div>
+
+      <div class="card full">
+        <div class="summary-grid">
+          <div class="metric"><span>zxcvbn</span><strong>{{ result.zxcvbn_score }} / 100</strong><div class="detail">{{ zxcvbn_result.feedback }}</div></div>
+          <div class="metric"><span>Rule-based</span><strong>{{ result.rule_based_score }} / 100</strong><div class="detail">{{ rule_result.feedback }}</div></div>
+          <div class="metric"><span>Entropy</span><strong>{{ result.entropy_bits }} bits</strong><div class="detail">Estimated score {{ result.entropy_score }} / 100</div></div>
+        </div>
+        {% if insight %}
+          <div class="info-banner" style="margin-top: 16px;">{{ insight }}</div>
+        {% endif %}
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}

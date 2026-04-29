@@ -1,0 +1,192 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <section class="grid">
+    <div class="card wide">
+      <h2>Attack lab</h2>
+      <form method="post" action="{{ url_for('brute_force_page') }}" enctype="multipart/form-data" class="form-grid">
+        <div class="inline-fields">
+          <div class="form-row">
+            <label class="form-label" for="password">Password to test</label>
+            <input id="password" type="password" name="password" value="{{ password }}" placeholder="Enter a password" required>
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="charset_name">Charset</label>
+            <select id="charset_name" name="charset_name">
+              <option value="lowercase" {% if charset_name == 'lowercase' %}selected{% endif %}>Lowercase</option>
+              <option value="alphanumeric" {% if charset_name == 'alphanumeric' %}selected{% endif %}>Alphanumeric</option>
+              <option value="full" {% if charset_name == 'full' %}selected{% endif %}>Full charset</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="wordlist_mode">Wordlist mode</label>
+            <select id="wordlist_mode" name="wordlist_mode">
+              <option value="default" {% if wordlist_mode == 'default' %}selected{% endif %}>Default wordlist</option>
+              <option value="upload" {% if wordlist_mode == 'upload' %}selected{% endif %}>Uploaded wordlist</option>
+              <option value="both" {% if wordlist_mode == 'both' %}selected{% endif %}>Default + uploaded</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label" for="wordlist">Upload your wordlist</label>
+          <input id="wordlist" type="file" name="wordlist" accept=".txt,.lst,.dic,text/plain">
+          <div class="small">Default bundled list is always available. Upload a custom file to compare against your own list or combine both.</div>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label" for="compare_passwords">Optional comparison passwords</label>
+          <textarea id="compare_passwords" name="compare_passwords" placeholder="One password per line">{{ compare_passwords }}</textarea>
+        </div>
+
+        <label class="form-label" style="display: flex; gap: 10px; align-items: center; text-transform: none; letter-spacing: 0;">
+          <input type="checkbox" name="case_variations" {% if case_variations %}checked{% endif %}>
+          Include case-variation matches in dictionary checks
+        </label>
+
+        <div class="button-row">
+          <button class="button secondary" type="submit">Run attack simulation</button>
+          <span class="helper">Dictionary checks are timed. Brute force is real only for tiny spaces and otherwise estimated.</span>
+        </div>
+      </form>
+    </div>
+
+    <aside class="card narrow">
+      <h2>What these options do</h2>
+      <div class="summary-box">
+        <div class="notice">Default wordlist uses the bundled list. Upload uses only your file. Both merges the two.</div>
+        <div class="notice">The graph is interactive Plotly, so you can zoom, pan, and inspect the crack-time curve.</div>
+        <a class="tag secondary" href="{{ url_for('faq_page') }}">Read the FAQ</a>
+      </div>
+    </aside>
+  </section>
+
+  {% if result %}
+    <section class="grid" style="margin-top: 22px;">
+      <div class="card full">
+        <h2>Attack summary</h2>
+        <div class="button-row" style="margin-bottom: 14px;">
+          <span class="badge {{ result.rating }}">{{ result.rating }}</span>
+          <span class="tag">Selected wordlist: {{ wordlist_source_label }}</span>
+          <span class="tag secondary">Charset: {{ brute_force_result.charset_name }}</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid" style="margin-top: 22px;">
+      <div class="card wide">
+        <h2>Dictionary attack</h2>
+        <div class="summary-grid">
+          <div class="metric"><span>Match found</span><strong>{{ 'Yes' if dictionary_result and dictionary_result.matched else 'No' }}</strong></div>
+          <div class="metric"><span>Match type</span><strong>{% if dictionary_result %}{{ dictionary_result.match_type|title }}{% else %}N/A{% endif %}</strong></div>
+          <div class="metric"><span>Time taken</span><strong>{% if dictionary_result %}{{ '%.6f'|format(dictionary_result.elapsed_seconds) }}s{% else %}—{% endif %}</strong></div>
+        </div>
+      </div>
+
+      <div class="card narrow">
+        <h2>Brute-force simulation</h2>
+        <div class="summary-grid">
+          <div class="metric"><span>Mode</span><strong>{{ brute_force_result.mode }}</strong></div>
+          <div class="metric"><span>Search space</span><strong>{{ combinations_hr if combinations_hr is defined else ('{:,}'.format(brute_force_result.combinations)) }}</strong></div>
+          <div class="metric"><span>Estimated time</span><strong>{{ est_time_hr if est_time_hr is defined else ('%.2f'|format(brute_force_result.estimated_seconds) ~ 's') }}</strong></div>
+          {% if brute_force_result.actual_seconds is not none %}
+          <div class="metric"><span>Actual time</span><strong>{{ '%.6f'|format(brute_force_result.actual_seconds) }}s</strong></div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="grid" style="margin-top: 22px;">
+      <div class="card full" style="padding: 0;">
+        <div style="padding: 18px 18px 0 18px;">
+          <h2 style="margin: 0 0 18px 0;">Crack time curve</h2>
+        </div>
+        <canvas id="crackTimeChart" style="display: block; max-height: 500px; margin: 0 18px 18px 18px;"></canvas>
+      </div>
+    </section>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script>
+      (function() {
+        const ctx = document.getElementById('crackTimeChart');
+        if (!ctx) return;
+        
+        const chartData = {{ chart_data|safe }};
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: chartData.labels,
+            datasets: chartData.datasets
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { font: { size: 12 }, padding: 15 }
+              }
+            },
+            scales: {
+              y: {
+                type: 'logarithmic',
+                title: { display: true, text: 'Estimated cracking time (seconds)', font: { size: 12 } },
+                ticks: { font: { size: 11 } }
+              },
+              x: {
+                title: { display: true, text: 'Password length (characters)', font: { size: 12 } },
+                ticks: { font: { size: 11 } }
+              }
+            }
+          }
+        });
+      })();
+    </script>
+
+    <section class="grid" style="margin-top: 22px;">
+      <div class="card full">
+        <h2>Findings explained</h2>
+        <table class="findings-table">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Your password</th>
+              <th>What it means</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Password length</strong></td>
+              <td>{{ password_length }} characters</td>
+              <td>Longer passwords exponentially increase the search space. Each additional character roughly multiplies the time by the charset size.</td>
+            </tr>
+            <tr>
+              <td><strong>Charset size</strong></td>
+              <td>{{ brute_force_result.charset_size }} possible symbols</td>
+              <td>The set of characters that could be in the password (lowercase, alphanumeric, or full). A larger charset makes brute force slower.</td>
+            </tr>
+            <tr>
+              <td><strong>Total combinations</strong></td>
+              <td>{{ combinations_hr if combinations_hr is defined else ('{:,}'.format(brute_force_result.combinations)) }}</td>
+              <td>The total number of passwords to try in the worst case. This is charset_size ^ length.</td>
+            </tr>
+            <tr>
+              <td><strong>Dictionary match</strong></td>
+              <td>{{ 'Found' if dictionary_result and dictionary_result.matched else 'Not found' }}</td>
+              <td>If your password appears in the wordlist, it can be cracked instantly. Dictionary attacks are much faster than brute force.</td>
+            </tr>
+            <tr>
+              <td><strong>Estimated crack time</strong></td>
+              <td>{{ est_time_hr if est_time_hr is defined else ('%.2f'|format(brute_force_result.estimated_seconds) ~ ' seconds') }}</td>
+              <td>Mathematical estimate assuming 1 million attempts per second. Real-world times vary by hardware and algorithm.</td>
+            </tr>
+            <tr>
+              <td><strong>Average time to crack</strong></td>
+              <td>{% if est_time_hr is defined %}{{ (brute_force_result.estimated_seconds / 2) | round(2) }} seconds{% else %}{{ '%.2f'|format(brute_force_result.estimated_seconds / 2) }} seconds{% endif %}</td>
+              <td>On average, the attacker will find the password halfway through the search space, so divide the estimate by 2.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}

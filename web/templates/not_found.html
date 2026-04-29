@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <section class="card full">
+    <h2>Page not found</h2>
+    <p>The requested route does not exist. Use the navigation to go to strength analysis or the attack lab.</p>
+    <div class="button-row" style="margin-top: 16px;">
+      <a class="button" href="{{ url_for('home') }}">Home</a>
+      <a class="button secondary" href="{{ url_for('strength_page') }}">Strength</a>
+    </div>
+  </section>
+{% endblock %}

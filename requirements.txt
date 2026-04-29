@@ -1,0 +1,4 @@
+Flask>=3.0
+plotly>=5.20
+zxcvbn>=4.5.0
+passwordmeter

@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <section class="card full">
+    <h2>Recent history</h2>
+    <div class="history">
+      {% for item in history %}
+        <div class="history-item">
+          <div>
+            <strong>{{ item.rating }}</strong>
+            <div class="meta">Length {{ item.password_length }} | {{ item.charset_name }}</div>
+          </div>
+          <div>
+            <div>{{ item.final_score }} / 100</div>
+          </div>
+        </div>
+      {% else %}
+        <div class="notice">No saved results yet.</div>
+      {% endfor %}
+    </div>
+  </section>
+{% endblock %}

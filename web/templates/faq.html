@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <section class="grid">
+    <div class="card full">
+      <h2>FAQ</h2>
+      <p class="subtitle">This page explains what the app does, why it does it this way, and what each analysis step means.</p>
+    </div>
+
+    <div class="card wide">
+      <h2>What are we doing?</h2>
+      <p>We estimate password strength with multiple established approaches, then simulate two common attack styles: dictionary matching and brute-force search.</p>
+    </div>
+
+    <div class="card narrow">
+      <h2>Why separate pages?</h2>
+      <p>Strength scoring, attack simulation, and the explanation are easier to understand when each task has its own page.</p>
+    </div>
+
+    <div class="card wide">
+      <h2>How strength scoring works</h2>
+      <p>zxcvbn evaluates real-world patterns, the rule-based layer checks composition cues, and the entropy estimate measures the search space from password length and charset size.</p>
+    </div>
+
+    <div class="card narrow">
+      <h2>How the final score is built</h2>
+      <p>The tool normalizes each estimator to a common scale and averages them with weights so the final score stays readable from 0 to 100.</p>
+    </div>
+
+    <div class="card wide">
+      <h2>How dictionary attacks work here</h2>
+      <p>The app compares the password against the default bundled wordlist, an uploaded file, or both. It can also check case variations and reports the time taken.</p>
+    </div>
+
+    <div class="card narrow">
+      <h2>How brute force is handled</h2>
+      <p>The app estimates crack time mathematically for normal cases and only tries real brute force for tiny spaces so the tool stays safe.</p>
+    </div>
+
+    <div class="card full">
+      <h2>Wordlist modes</h2>
+      <div class="summary-grid">
+        <div class="metric"><span>Default</span><div class="detail">Uses the bundled wordlist that ships with the app.</div></div>
+        <div class="metric"><span>Upload</span><div class="detail">Uses only the file you upload for the current run.</div></div>
+        <div class="metric"><span>Both</span><div class="detail">Combines the bundled list and your uploaded list.</div></div>
+      </div>
+    </div>
+  </section>
+{% endblock %}

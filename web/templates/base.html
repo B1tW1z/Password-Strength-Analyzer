@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title or 'Password Security Analyzer' }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <div class="brand">
+        <strong>Password Security Lab</strong>
+        <span>Strength checks, attack simulation, and interactive analysis</span>
+      </div>
+      <nav class="nav">
+        <a href="{{ url_for('home') }}" class="{% if request.endpoint == 'home' %}active{% endif %}">Home</a>
+        <a href="{{ url_for('strength_page') }}" class="{% if request.endpoint == 'strength_page' %}active{% endif %}">Strength</a>
+        <a href="{{ url_for('brute_force_page') }}" class="{% if request.endpoint == 'brute_force_page' %}active{% endif %}">Attack Lab</a>
+        <a href="{{ url_for('history_page') }}" class="{% if request.endpoint == 'history_page' %}active{% endif %}">History</a>
+        <a href="{{ url_for('faq_page') }}" class="{% if request.endpoint == 'faq_page' %}active{% endif %}">FAQ</a>
+      </nav>
+    </header>
+
+    {% block content %}{% endblock %}
+
+    <footer class="footer">
+      Modular Flask app with separate strength and attack workflows, Plotly charts, and local result tracking.
+    </footer>
+  </div>
+</body>
+</html>

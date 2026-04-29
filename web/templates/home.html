@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <section class="hero-grid">
+    <div class="hero-copy">
+      <div class="kicker">Security Toolkit</div>
+      <h1>Test passwords, attack safely, and understand the results.</h1>
+      <p class="subtitle" style="margin-top: 14px;">
+        Use separate pages for strength scoring, attack simulation, and an explanation of how the analysis works.
+      </p>
+      <div class="button-row" style="margin-top: 18px;">
+        <a class="button" href="{{ url_for('strength_page') }}">Open strength analysis</a>
+        <a class="button secondary" href="{{ url_for('brute_force_page') }}">Open attack lab</a>
+        <a class="button" href="{{ url_for('faq_page') }}">Open FAQ</a>
+      </div>
+    </div>
+
+    <div class="summary-box">
+      <div class="notice">
+        Wordlist modes let you use the bundled list, upload your own, or combine both.
+      </div>
+      <div class="history-item">
+        <div>
+          <strong>Strength page</strong>
+          <div class="meta">zxcvbn, rule-based scoring, entropy, and aggregation</div>
+        </div>
+      </div>
+      <div class="history-item">
+        <div>
+          <strong>Attack lab</strong>
+          <div class="meta">Wordlist matching, brute-force estimates, and Plotly charts</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid" style="margin-top: 22px;">
+    <div class="card wide">
+      <h2>Workflow</h2>
+      <p>The app is split into a strength page, an attack lab, and a FAQ so each task stays focused.</p>
+      <p style="margin-top: 10px;">The chart is interactive Plotly, not a static image, so you can zoom and inspect the curve.</p>
+    </div>
+    <div class="card narrow">
+      <h2>Start here</h2>
+      <div class="stack">
+        <a class="tag active" href="{{ url_for('strength_page') }}">Strength</a>
+        <a class="tag secondary" href="{{ url_for('brute_force_page') }}">Attack Lab</a>
+        <a class="tag ghost" href="{{ url_for('faq_page') }}">FAQ</a>
+      </div>
+    </div>
+  </section>
+{% endblock %}
