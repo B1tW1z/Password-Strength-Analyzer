@@ -12,7 +12,7 @@ import time
 
 from attacks.brute_force import CHARSETS, analyze as brute_force_analyze
 from attacks.dictionary import simulate as dictionary_simulate
-from metrics.graph import build_chart_data
+from metrics.graph import build_chart_data, build_password_length_bar_chart
 from metrics.tracker import AnalysisRecord, ResultTracker
 from strength.aggregator import aggregate
 from strength.entropy import estimate as entropy_estimate
@@ -326,6 +326,9 @@ def create_app() -> Flask:
 
             chart_data = json.dumps(chart_json)
 
+            # Generate bar chart data for password length vs cracking time (6-18 chars)
+            bar_chart_data = build_password_length_bar_chart(brute_force_result.charset_size, attempts_per_second=attempts_per_second)
+
             # Human friendly strings for long numbers / times
             combinations_hr = _human_readable_number(brute_force_result.combinations)
             est_time_hr = _human_readable_seconds(brute_force_result.estimated_seconds)
@@ -377,6 +380,7 @@ def create_app() -> Flask:
                     "dictionary_result": dictionary_result,
                     "brute_force_result": brute_force_result,
                     "chart_data": chart_data,
+                    "bar_chart_data": bar_chart_data,
                     "combinations_hr": combinations_hr,
                     "est_time_hr": est_time_hr,
                     "avg_time_hr": avg_time_hr,

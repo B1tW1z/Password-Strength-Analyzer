@@ -123,6 +123,15 @@
     </section>
 
     <section class="grid" style="margin-top: 22px;">
+      <div class="card full" style="padding: 0;">
+        <div style="padding: 18px 18px 0 18px;">
+          <h2 style="margin: 0 0 18px 0;">Password length vs cracking time</h2>
+        </div>
+        <canvas id="passwordLengthChart" style="display: block; max-height: 500px; margin: 0 18px 18px 18px;"></canvas>
+      </div>
+    </section>
+
+    <section class="grid" style="margin-top: 22px;">
       <div class="card full comparison-panel">
         <h2>Attack comparison</h2>
         <div class="comparison-meter">
@@ -246,6 +255,50 @@
             });
           });
         }
+      })();
+
+      // Render the password length vs cracking time bar chart
+      (function() {
+        const barCtx = document.getElementById('passwordLengthChart');
+        if (!barCtx) return;
+
+        const rootStyles = getComputedStyle(document.documentElement);
+        const ink = rootStyles.getPropertyValue('--ink') || '#111';
+        const border = rootStyles.getPropertyValue('--border') || '#111';
+
+        const barChartData = {{ bar_chart_data|safe }};
+
+        new Chart(barCtx, {
+          type: 'bar',
+          data: {
+            labels: barChartData.labels,
+            datasets: barChartData.datasets
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { font: { size: 12 }, padding: 15, color: ink }
+              }
+            },
+            scales: {
+              x: {
+                type: 'logarithmic',
+                title: { display: true, text: 'Estimated cracking time (seconds)', font: { size: 12 }, color: ink },
+                ticks: { font: { size: 11 }, color: ink },
+                grid: { color: border }
+              },
+              y: {
+                title: { display: true, text: 'Password length', font: { size: 12 }, color: ink },
+                ticks: { font: { size: 11 }, color: ink },
+                grid: { color: border }
+              }
+            }
+          }
+        });
       })();
     </script>
 
