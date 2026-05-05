@@ -1,0 +1,263 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="grid">
+  <div class="card wide">
+    <h2>AI Assistant</h2>
+    {% if model_error %}
+      <div class="notice" style="margin-bottom: 14px;">
+        <strong>⚠ Model not available</strong><br>
+        {{ model_error }}<br><br>
+        <strong>Setup instructions:</strong><br>
+        1. Install the dependency: <code>pip install llama-cpp-python</code><br>
+        2. Download a GGUF model, e.g.
+           <em>Phi-3-mini-4k-instruct-q4.gguf</em> from Hugging Face.<br>
+        3. Set the environment variable before starting the app:<br>
+           <code>export PSA_MODEL_PATH=/path/to/model.gguf</code><br>
+        4. Restart the Flask server.
+      </div>
+    {% else %}
+      <p class="helper" style="margin-bottom: 14px;">
+        Ask anything about how this project works — scoring, attack simulation,
+        architecture, or methodology.
+      </p>
+    {% endif %}
+
+    <!-- Chat history display -->
+    <div id="chat-log" class="chat-log" aria-live="polite">
+      <div class="chat-bubble assistant">
+        <strong>Assistant</strong>
+        <p>Hi! I know everything about the Password Security Lab project. Ask me how the
+        scoring works, what modules do what, or anything else about the codebase.</p>
+      </div>
+    </div>
+
+    <!-- Input area -->
+    <div class="chat-input-row" style="margin-top: 14px;">
+      <input
+        id="chat-input"
+        type="text"
+        placeholder="Ask a question about this project…"
+        autocomplete="off"
+        {% if model_error %}disabled{% endif %}
+      >
+      <button
+        id="chat-send"
+        class="button"
+        {% if model_error %}disabled{% endif %}
+      >Send</button>
+    </div>
+    <p class="helper" style="margin-top: 8px; font-size: 0.82rem;">
+      Responses are generated locally via llama.cpp. No data leaves your machine.
+    </p>
+  </div>
+
+  <aside class="card narrow">
+    <h2>About this page</h2>
+    <div class="summary-box">
+      <div class="notice">
+        This chatbot is powered by a local LLM loaded through
+        <strong>llama-cpp-python</strong>. It has been given a system prompt
+        describing the entire project so it can answer questions accurately.
+      </div>
+      <div class="notice">
+        Conversation history is kept in memory for the current session only —
+        nothing is persisted to disk.
+      </div>
+      <div class="notice">
+        <strong>Example questions:</strong><br>
+        • How does the final score get calculated?<br>
+        • What is the difference between zxcvbn and rule-based scoring?<br>
+        • How does the brute-force simulation work?<br>
+        • What does strength/generator.py do?
+      </div>
+    </div>
+  </aside>
+</section>
+
+<style>
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 460px;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+
+.chat-bubble {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 3px solid var(--border);
+  box-shadow: 4px 4px 0 var(--border);
+  font-family: "Segoe UI", sans-serif;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.chat-bubble strong {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.chat-bubble p {
+  margin: 0;
+}
+
+.chat-bubble.user {
+  background: #fff8d8;
+  align-self: flex-end;
+  max-width: 80%;
+}
+
+.chat-bubble.assistant {
+  background: var(--panel-strong);
+  align-self: flex-start;
+  max-width: 90%;
+}
+
+.chat-bubble.assistant.streaming p::after {
+  content: "▌";
+  animation: blink 0.7s step-start infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.chat-bubble .error-text {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 10px;
+}
+
+.chat-input-row input {
+  flex: 1;
+}
+</style>
+
+<script>
+(function () {
+  const log     = document.getElementById('chat-log');
+  const input   = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('chat-send');
+
+  // In-memory conversation history for context window
+  const history = [];
+
+  function scrollToBottom() {
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function appendBubble(role, text) {
+    const bubble = document.createElement('div');
+    bubble.className = `chat-bubble ${role}`;
+    const label = document.createElement('strong');
+    label.textContent = role === 'user' ? 'You' : 'Assistant';
+    const body = document.createElement('p');
+    body.textContent = text;
+    bubble.appendChild(label);
+    bubble.appendChild(body);
+    log.appendChild(bubble);
+    scrollToBottom();
+    return body;
+  }
+
+  function setInputsEnabled(enabled) {
+    input.disabled  = !enabled;
+    sendBtn.disabled = !enabled;
+  }
+
+  async function sendMessage() {
+    const message = input.value.trim();
+    if (!message) return;
+
+    input.value = '';
+    setInputsEnabled(false);
+
+    // Show user bubble
+    appendBubble('user', message);
+    history.push({ role: 'user', content: message });
+
+    // Create streaming assistant bubble
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble assistant streaming';
+    const label = document.createElement('strong');
+    label.textContent = 'Assistant';
+    const body = document.createElement('p');
+    body.textContent = '';
+    bubble.appendChild(label);
+    bubble.appendChild(body);
+    log.appendChild(bubble);
+    scrollToBottom();
+
+    let fullReply = '';
+
+    try {
+      const resp = await fetch('/assistant/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, history: history.slice(0, -1) }),
+      });
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep incomplete line
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let evt;
+          try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (evt.error) {
+            body.innerHTML = `<span class="error-text">Error: ${evt.error}</span>`;
+            bubble.classList.remove('streaming');
+            break;
+          }
+          if (evt.token) {
+            fullReply += evt.token;
+            body.textContent = fullReply;
+            scrollToBottom();
+          }
+          if (evt.done) {
+            bubble.classList.remove('streaming');
+          }
+        }
+      }
+    } catch (err) {
+      body.innerHTML = `<span class="error-text">Connection error: ${err.message}</span>`;
+      bubble.classList.remove('streaming');
+    }
+
+    if (fullReply) {
+      history.push({ role: 'assistant', content: fullReply });
+    }
+
+    setInputsEnabled(true);
+    input.focus();
+  }
+
+  sendBtn.addEventListener('click', sendMessage);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+})();
+</script>
+{% endblock %}

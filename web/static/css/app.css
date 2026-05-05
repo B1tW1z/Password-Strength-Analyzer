@@ -594,3 +594,48 @@ textarea:focus {
     position: static;
   }
 }
+
+/* ── Suggested password box (Strength page) ─────────────────────── */
+.suggested-pw-box {
+  border: 3px solid var(--border);
+  background: #f0fff4;
+  box-shadow: var(--shadow);
+  padding: 16px 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.suggested-pw-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.suggested-pw-label span {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-family: "Segoe UI", sans-serif;
+}
+
+.suggested-pw-value {
+  display: block;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: #fff;
+  border: 3px solid var(--border);
+  padding: 12px 14px;
+  word-break: break-all;
+  color: var(--ink);
+}
+
+.suggested-pw-note {
+  font-family: "Segoe UI", sans-serif;
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0;
+}
