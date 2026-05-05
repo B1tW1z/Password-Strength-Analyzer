@@ -21,6 +21,11 @@ A modular Flask web application that evaluates password strength, simulates comm
 
 ---
 
+## Working Demo
+
+<video src="Demo.mp4" width="1022" height="998" controls></video>
+
+
 ## Project Structure
 
 ```
