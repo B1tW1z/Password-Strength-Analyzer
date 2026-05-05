@@ -1,87 +1,224 @@
-
-# Password Strength Analyzer
+# Password Security Lab
 
 [![Python](https://img.shields.io/badge/Python-3.x-blue.svg)]()
 [![Flask](https://img.shields.io/badge/Flask-3.0-lightgrey.svg)]()
+[![llama-cpp-python](https://img.shields.io/badge/llama--cpp--python-0.2%2B-green.svg)]()
 
+A modular Flask web application that evaluates password strength, simulates common cracking attacks, and hosts a locally-running AI assistant that can answer questions about the project — all without sending any data to external servers.
 
-A lightweight web application to evaluate password strength and simulate basic password cracking techniques. Built with Flask, it helps demonstrate how secure a password is and how long it may take to crack.
+---
 
 ## Features
-- Strength rating (Weak / Medium / Strong)
-- Dictionary attack using wordlists
-- Limited brute-force attack simulation
-- Time tracking for attacks
-- Graph generation (password length vs cracking time)
 
-## Requirements
-```
-Flask>=3.0
-zxcvbn>=4.5.0
-passwordmeter
-````
+| Page | What it does |
+|---|---|
+| **Home** | Overview and quick-start links |
+| **Strength** | Analyses a password with three independent engines and suggests a strong replacement |
+| **Attack Lab** | Simulates dictionary and brute-force attacks with live streaming progress |
+| **History** | Shows the six most recent analysis results |
+| **FAQ** | Explains the methodology, scoring weights, and project limitations |
+| **Assistant** | Local AI chatbot (llama.cpp) pre-loaded with full project knowledge |
 
-## Installation
-```bash
-git clone https://github.com/B1tW1z/Password-Strength-Analyzer.git
-cd Password-Strength-Analyzer
-pip install -r requirements.txt
-````
-
-## Usage
-
-```bash
-python app.py
-```
-
-Open in browser:
-
-```
-http://127.0.0.1:5000/
-```
+---
 
 ## Project Structure
 
 ```
-.
-├── run.py
+Password-Strength-Analyzer/
+├── run.py                        # Flask entry point
 ├── requirements.txt
+│
 ├── attacks/
-│   ├── brute_force.py
-│   └── dictionary.py
+│   ├── brute_force.py            # Estimates cracking time across four charsets
+│   └── dictionary.py             # Wordlist-based attack simulation
+│
 ├── data/
-│   ├── default_wordlist.txt
-│   └── results.json
+│   ├── default_wordlist.txt      # Bundled common-password list
+│   └── results.json              # Persisted analysis history
+│
 ├── metrics/
-│   ├── graph.py
-│   └── tracker.py
+│   ├── graph.py                  # Chart.js dataset builders
+│   └── tracker.py                # Writes/reads results.json
+│
 ├── strength/
-│   ├── aggregator.py
-│   ├── entropy.py
-│   ├── rule_based.py
-│   └── zxcvbn_adapter.py
-├── web/
-│   ├── app.py
-│   ├── static/
-│   │   ├── css/app.css
-│   │   └── graphs/
-│   └── templates/
-│       ├── base.html
-│       ├── home.html
-│       ├── strength.html
-│       ├── bruteforce.html
-│       ├── history.html
-│       ├── faq.html
-│       └── not_found.html
+│   ├── aggregator.py             # Weighted score blending
+│   ├── entropy.py                # Shannon entropy estimator
+│   ├── generator.py              # Cryptographically secure password generator
+│   ├── rule_based.py             # Composition rule checker
+│   └── zxcvbn_adapter.py         # zxcvbn pattern-matching wrapper
+│
+└── web/
+    ├── app.py                    # Flask application factory & all routes
+    ├── static/css/app.css        # Neobrutalist design system
+    └── templates/
+        ├── base.html
+        ├── home.html
+        ├── strength.html
+        ├── bruteforce.html
+        ├── history.html
+        ├── faq.html
+        ├── assistant.html        # AI chatbot page
+        └── not_found.html
 ```
 
-## Output
+---
 
-* Strength rating (Weak / Medium / Strong)
-* Estimated cracking time
-* Visualization of password length vs cracking time
+## How Strength Scoring Works
 
-## Notes
-- Dictionary attacks use default_wordlist.txt (can be replaced with larger lists like rockyou.txt)
-- Brute-force simulation is intentionally limited for performance reasons
-- Results and metrics are stored in data/results.json
+Every password analysed on the Strength page is evaluated by three independent engines. Their results are blended into a single **final score (0–100)** and a **rating**.
+
+### 1 · zxcvbn (pattern matching) — 40% weight
+The [zxcvbn](https://github.com/dwolfhub/zxcvbn-python) library detects real-world patterns: dictionary words, keyboard walks (`qwerty`, `12345`), dates, repeated characters, and common substitutions (`p@ssw0rd`). It returns a score from 0–4 which is mapped linearly to 0–100.
+
+### 2 · Rule-based scoring — 35% weight
+`strength/rule_based.py` awards points for measurable composition properties:
+
+| Criterion | Points |
+|---|---|
+| Length >= 8 | +20 |
+| Length >= 12 | +10 additional |
+| Length >= 16 | +10 additional |
+| Contains uppercase letter | +15 |
+| Contains lowercase letter | +15 |
+| Contains digit | +15 |
+| Contains symbol | +15 |
+
+### 3 · Entropy estimation — 25% weight
+`strength/entropy.py` calculates Shannon entropy in bits:
+
+```
+entropy = password_length x log2(charset_size)
+```
+
+The active charset size is derived from which character classes are present (digits only = 10; full ASCII printable = 95). Entropy is mapped to 0–100 using practical thresholds (>=60 bits = 100).
+
+### Final score & rating
+
+```
+final = (zxcvbn_score x 0.40) + (rule_score x 0.35) + (entropy_score x 0.25)
+```
+
+| Rating | Score range |
+|---|---|
+| **Weak** | 0 – 39 |
+| **Medium** | 40 – 69 |
+| **Strong** | 70 – 100 |
+
+---
+
+## Suggested Password Generator
+
+After analysis, the Strength page displays a cryptographically strong suggested password generated by `strength/generator.py` using Python's built-in `secrets` module (backed by the OS CSPRNG). Every suggestion is:
+
+- **16 characters** minimum
+- Guaranteed to contain at least one **uppercase**, **lowercase**, **digit**, and **symbol**
+- Shuffled with `secrets.SystemRandom` (not `random`)
+- **Fresh on every page load** — never reused or stored
+
+A one-click **Copy** button writes it directly to the clipboard.
+
+---
+
+## Attack Lab
+
+### Dictionary attack (`attacks/dictionary.py`)
+Checks the password against a wordlist, optionally expanding each word with common case variations (all-caps, title-case, etc.). Reports whether the password matched and how long the scan took.
+
+### Brute-force estimation (`attacks/brute_force.py`)
+Calculates the worst-case combination count for four character-set sizes:
+
+| Charset | Size |
+|---|---|
+| Digits only | 10 |
+| Alpha (a–z, A–Z) | 52 |
+| Alphanumeric | 62 |
+| Full ASCII printable | 95 |
+
+Estimated crack time = `combinations / attempts_per_second`. The attempts-per-second rate is configurable in the UI (default 1,000,000/s).
+
+An **animated streaming mode** (Server-Sent Events) shows progressive estimated times length-by-length.
+
+---
+
+## AI Assistant
+
+The **Assistant** page hosts a locally-running LLM via [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), the Python binding for [llama.cpp](https://github.com/ggerganov/llama.cpp). The model is pre-loaded with a system prompt describing every module, scoring algorithm, and page in the project.
+
+No data is sent to any external server. The model runs entirely on your machine.
+
+### Setup
+
+**1. Install the dependency**
+```bash
+pip install llama-cpp-python
+```
+
+> For GPU acceleration, see the [llama-cpp-python installation docs](https://github.com/abetlen/llama-cpp-python#installation-with-hardware-acceleration).
+
+**2. Download a GGUF model**
+
+Any instruction-tuned GGUF model works. A good lightweight option:
+- **Phi-3-mini-4k-instruct** (Q4_K_M, ~2.2 GB) from [Hugging Face](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf)
+
+**3. Set the environment variable**
+```bash
+export PSA_MODEL_PATH=/path/to/your/model.gguf
+```
+
+**4. Start the server** — the model loads on first use (the first message may take a moment).
+
+If `PSA_MODEL_PATH` is unset or the file is missing, the page displays clear setup instructions and the rest of the app continues to function normally.
+
+### What you can ask
+- "How does the final score get calculated?"
+- "What is the difference between zxcvbn and rule-based scoring?"
+- "How does the brute-force simulation work?"
+- "What does strength/generator.py do?"
+- "Why isn't this tool a replacement for MFA?"
+
+---
+
+## Installation
+
+```bash
+git clone https://github.com/B1tW1z/Password-Strength-Analyzer.git
+cd Password-Strength-Analyzer
+pip install -r requirements.txt
+```
+
+To enable the AI Assistant, also run:
+```bash
+pip install llama-cpp-python
+export PSA_MODEL_PATH=/path/to/model.gguf
+```
+
+---
+
+## Running the App
+
+```bash
+python run.py
+```
+
+Open in your browser: http://127.0.0.1:5000
+
+---
+
+## Requirements
+
+```
+Flask>=3.0
+zxcvbn>=4.5.0
+passwordmeter
+llama-cpp-python>=0.2.0   # required only for the AI Assistant page
+```
+
+---
+
+## Notes & Limitations
+
+- **This is a learning tool.** Scores and crack-time estimates are illustrative, not authoritative.
+- The brute-force simulation is intentionally capped for performance; real-world attackers use GPUs and rainbow tables.
+- Dictionary coverage depends entirely on the wordlist size. Replace `data/default_wordlist.txt` with a larger list (e.g. `rockyou.txt`) for more realistic dictionary results.
+- The final score is **not** a substitute for a proper organisational password policy or multi-factor authentication.
+- Analysis history is stored locally in `data/results.json`. Clear or rotate this file as needed.

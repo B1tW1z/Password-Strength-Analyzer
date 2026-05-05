@@ -46,6 +46,31 @@
         {% if insight %}
           <div class="info-banner" style="margin-top: 16px;">{{ insight }}</div>
         {% endif %}
+
+        {% if suggested_password %}
+          <div class="suggested-pw-box" style="margin-top: 16px;">
+            <div class="suggested-pw-label">
+              <span>Suggested strong password</span>
+              <button
+                class="button ghost"
+                style="padding: 6px 12px; font-size: 0.8rem;"
+                onclick="
+                  navigator.clipboard.writeText(this.dataset.pw).then(() => {
+                    const orig = this.textContent;
+                    this.textContent = 'Copied!';
+                    setTimeout(() => this.textContent = orig, 1800);
+                  });
+                "
+                data-pw="{{ suggested_password }}"
+              >Copy</button>
+            </div>
+            <code class="suggested-pw-value">{{ suggested_password }}</code>
+            <p class="suggested-pw-note">
+              Generated with <code>secrets</code> — 16 chars, mixed upper/lower/digit/symbol.
+              Each page load produces a fresh suggestion.
+            </p>
+          </div>
+        {% endif %}
       </div>
     </section>
   {% endif %}
